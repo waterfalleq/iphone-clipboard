@@ -1,21 +1,34 @@
-const http = require("node:http");
+const express = require("express");
+const multer = require("multer");
 
+const app = express();
 const port = 3000;
+const upload = multer({ dest: "uploads/" });
 
-const server = http.createServer((request, response) => {
-  console.log(request.method, request.url);
+app.get("/", (request, response) => {
+  console.log("GET /");
+  response.type("text/plain").send("hello");
+});
 
-  if (request.method === "GET" && request.url === "/") {
-    response.statusCode = 200;
-    response.setHeader("Content-Type", "text/plain; charset=utf-8");
-    response.end("hello");
+app.post("/upload", upload.single("image"), (request, response) => {
+  if (!request.file) {
+    response.status(400).json({ error: "No image uploaded" });
     return;
   }
 
-  response.statusCode = 404;
-  response.end("not found");
+  console.log("Received file:", request.file);
+
+  response.json({
+    message: "File received",
+    filename: request.file.filename,
+  });
 });
 
-server.listen(port, () => {
+app.use((request, response) => {
+  console.log(request.method, request.url);
+  response.status(404).send("not found");
+});
+
+app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
 });

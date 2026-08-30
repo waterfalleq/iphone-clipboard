@@ -3,3 +3,4 @@ uploads/
 .wrangler/
 .dev.vars*
 .client-state.json
+.client.env

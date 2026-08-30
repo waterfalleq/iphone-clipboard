@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "client": "node client.js"
+    "client": "node --env-file=.dev.vars --env-file=.client.env client.js"
   },
   "keywords": [],
   "author": "",

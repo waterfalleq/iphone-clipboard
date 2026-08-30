@@ -23,6 +23,8 @@ const trayIconDataUrl =
 let tray = null;
 let lastImageId = null;
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
 async function loadLastImageId() {
 	try {
 		const stateText = await readFile(stateFilePath, "utf8");
@@ -140,7 +142,7 @@ async function startPolling() {
 	}
 }
 
-app.whenReady().then(() => {
+function createDesktopApp() {
 	try {
 		if (!apiUrl || !apiToken) {
 			throw new Error("API_URL and API_TOKEN are required");
@@ -189,4 +191,14 @@ app.whenReady().then(() => {
 		console.error("Desktop startup failed:", error.message);
 		app.quit();
 	}
-});
+}
+
+if (!hasSingleInstanceLock) {
+	app.quit();
+} else {
+	app.on("second-instance", () => {
+		console.log("Second instance prevented");
+	});
+
+	app.whenReady().then(createDesktopApp);
+}

@@ -55,6 +55,8 @@ function copyImageToClipboard(imageBuffer) {
 }
 
 async function downloadLatestImage() {
+	console.time("  Image download");
+
     const response = await fetch(`${apiUrl}/image`, {
         headers: {
             Authorization: `Bearer ${apiToken}`,
@@ -68,7 +70,12 @@ async function downloadLatestImage() {
     const arrayBuffer = await response.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
+	console.timeEnd("  Image download");
+	console.time("  Windows clipboard");
+
     await copyImageToClipboard(imageBuffer);
+
+	console.timeEnd("  Windows clipboard");
 }
 
 async function checkLatest() {
@@ -87,7 +94,9 @@ async function checkLatest() {
 
         if (latest.available && latest.id !== lastImageId) {
             console.log("New image found:", latest.id);
+            console.time("Download and clipboard");
             await downloadLatestImage();
+            console.timeEnd("Download and clipboard");
             lastImageId = latest.id;
         }
     } catch (error) {

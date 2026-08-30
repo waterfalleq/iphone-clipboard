@@ -51,7 +51,9 @@ export default {
         }
 
         if (request.method === "POST" && url.pathname === "/upload") {
+            const processingStartedAt = Date.now();
             const form = await request.formData();
+            const formParsedAt = Date.now();
             const image = form.get("image");
 
             if (!(image instanceof File)) {
@@ -74,12 +76,17 @@ export default {
                 },
             });
 
+            const storedAt = Date.now();
+
             return Response.json({
                 message: "File received",
                 id: imageId,
                 name: image.name,
                 type: image.type,
                 size: image.size,
+                receiveAndParseMs: formParsedAt - processingStartedAt,
+                r2WriteMs: storedAt - formParsedAt,
+                totalProcessingMs: storedAt - processingStartedAt,
             });
         }
 

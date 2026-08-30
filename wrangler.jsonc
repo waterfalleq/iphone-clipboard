@@ -3,7 +3,9 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-29",
   "secrets": {
-  "required": ["API_TOKEN"]
+    "required": [
+      "API_TOKEN"
+    ]
   },
   "r2_buckets": [
     {

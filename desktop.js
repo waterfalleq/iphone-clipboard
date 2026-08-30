@@ -22,6 +22,8 @@ const trayIconDataUrl =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=";
 let tray = null;
 let lastImageId = null;
+let connectionStatus = "Starting…";
+let lastCopyStatus = "Last copied this session: not yet";
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -50,6 +52,69 @@ async function saveLastImageId(imageId) {
 		JSON.stringify(state, null, "\t"),
 		"utf8"
 	);
+}
+
+function updateTrayMenu() {
+	if (!tray) {
+		return;
+	}
+
+	const trayMenu = Menu.buildFromTemplate([
+		{
+			label: `Status: ${connectionStatus}`,
+			enabled: false,
+		},
+		{
+			label: lastCopyStatus,
+			enabled: false,
+		},
+		{
+			type: "separator",
+		},
+		{
+			label: "Copy latest now",
+			click: async () => {
+				setConnectionStatus("Copying latest…");
+
+				try {
+					await copyLatestImage();
+					markImageCopied();
+					setConnectionStatus("Waiting for image");
+				} catch (error) {
+					setConnectionStatus("Copy failed");
+					console.error("Copy failed:", error.message);
+				}
+			},
+		},
+		{
+			label: "Quit",
+			click: () => {
+				app.quit();
+			},
+		},
+	]);
+
+	tray.setToolTip(
+		`iPhone Clipboard — ${connectionStatus}`
+	);
+	tray.setContextMenu(trayMenu);
+}
+
+function setConnectionStatus(status) {
+	if (connectionStatus === status) {
+		return;
+	}
+
+	connectionStatus = status;
+	console.log("Status:", status);
+	updateTrayMenu();
+}
+
+function markImageCopied() {
+	const copiedAt = new Date().toLocaleTimeString();
+
+	lastCopyStatus = `Last copied: ${copiedAt}`;
+	updateTrayMenu();
 }
 
 async function copyLatestImage() {
@@ -107,16 +172,21 @@ async function checkLatest() {
 		const latest = await response.json();
 
 		if (!latest.available || latest.id === lastImageId) {
+			setConnectionStatus("Waiting for image");
 			return;
 		}
 
 		console.log("New image found:", latest.id);
+		setConnectionStatus("Downloading image…");
 
 		await copyLatestImage();
+		markImageCopied();
 
 		lastImageId = latest.id;
 		await saveLastImageId(lastImageId);
+		setConnectionStatus("Waiting for image");
 	} catch (error) {
+		setConnectionStatus("Error — see logs");
 		console.error("Polling failed:", error.message);
 	}
 }
@@ -135,6 +205,7 @@ async function startPolling() {
 	}
 
 	console.log("Polling started");
+	setConnectionStatus("Connecting…");
 
 	while (true) {
 		await checkLatest();
@@ -152,38 +223,7 @@ function createDesktopApp() {
 			nativeImage.createFromDataURL(trayIconDataUrl);
 
 		tray = new Tray(trayIcon);
-
-		const trayMenu = Menu.buildFromTemplate([
-			{
-				label: "Status: running",
-				enabled: false,
-			},
-			{
-				type: "separator",
-			},
-			{
-				label: "Copy latest now",
-				click: async () => {
-					try {
-						await copyLatestImage();
-					} catch (error) {
-						console.error(
-							"Copy failed:",
-							error.message
-						);
-					}
-				},
-			},
-			{
-				label: "Quit",
-				click: () => {
-					app.quit();
-				},
-			},
-		]);
-
-		tray.setToolTip("iPhone Clipboard");
-		tray.setContextMenu(trayMenu);
+		updateTrayMenu();
 
 		console.log("Tray app is running");
 		startPolling();

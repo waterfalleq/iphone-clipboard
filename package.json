@@ -2,16 +2,18 @@
   "name": "iphone-clipboard",
   "version": "1.0.0",
   "description": "",
+  "main": "desktop.js",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "client": "node --env-file=.dev.vars --env-file=.client.env client.js"
+    "desktop": "electron ."
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "electron": "^44.0.0",
     "wrangler": "^4.127.1"
   },
   "allowScripts": {

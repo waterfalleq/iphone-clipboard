@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-
+import { readFile, writeFile } from "node:fs/promises";
 
 const clipboardScriptPath = resolve("clipboard-windows.ps1");
+const stateFilePath = resolve(".client-state.json");
 
 const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
@@ -11,7 +12,34 @@ if (!apiUrl || !apiToken) {
     throw new Error("API_URL and API_TOKEN are required");
 }
 
-let lastImageId = null;
+async function loadLastImageId() {
+    try {
+        const stateText = await readFile(stateFilePath, "utf8");
+        const state = JSON.parse(stateText);
+
+        return state.lastImageId ?? null;
+    } catch (error) {
+        if (error.code === "ENOENT") {
+            return null;
+        }
+
+        throw error;
+    }
+}
+
+async function saveLastImageId(imageId) {
+    const state = {
+        lastImageId: imageId,
+    };
+
+    await writeFile(
+        stateFilePath,
+        JSON.stringify(state, null, "\t"),
+        "utf8"
+    );
+}
+
+let lastImageId = await loadLastImageId();
 
 function copyImageToClipboard(imageBuffer) {
     return new Promise((resolvePromise, reject) => {
@@ -55,7 +83,7 @@ function copyImageToClipboard(imageBuffer) {
 }
 
 async function downloadLatestImage() {
-	console.time("  Image download");
+    console.time("  Image download");
 
     const response = await fetch(`${apiUrl}/image`, {
         headers: {
@@ -70,12 +98,12 @@ async function downloadLatestImage() {
     const arrayBuffer = await response.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
-	console.timeEnd("  Image download");
-	console.time("  Windows clipboard");
+    console.timeEnd("  Image download");
+    console.time("  Windows clipboard");
 
     await copyImageToClipboard(imageBuffer);
 
-	console.timeEnd("  Windows clipboard");
+    console.timeEnd("  Windows clipboard");
 }
 
 async function checkLatest() {
@@ -98,6 +126,7 @@ async function checkLatest() {
             await downloadLatestImage();
             console.timeEnd("Download and clipboard");
             lastImageId = latest.id;
+            await saveLastImageId(lastImageId);
         }
     } catch (error) {
         console.error("Polling failed:", error.message);

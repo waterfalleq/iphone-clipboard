@@ -1,11 +1,7 @@
-import { writeFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
 
-const imagePath = resolve("test-image.jpg");
 const clipboardScriptPath = resolve("clipboard-windows.ps1");
 
 const apiUrl = process.env.API_URL;
@@ -17,19 +13,45 @@ if (!apiUrl || !apiToken) {
 
 let lastImageId = null;
 
-async function copyImageToClipboard() {
-    await execFileAsync("powershell.exe", [
-        "-NoProfile",
-        "-STA",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        clipboardScriptPath,
-        "-ImagePath",
-        imagePath,
-    ]);
+function copyImageToClipboard(imageBuffer) {
+    return new Promise((resolvePromise, reject) => {
+        const child = spawn("powershell.exe", [
+            "-NoProfile",
+            "-STA",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            clipboardScriptPath,
+        ], {
+            stdio: ["pipe", "ignore", "pipe"],
+        });
 
-    console.log("Image copied to clipboard");
+        let errorOutput = "";
+
+        child.stderr.setEncoding("utf8");
+
+        child.stderr.on("data", (chunk) => {
+            errorOutput += chunk;
+        });
+
+        child.on("error", reject);
+
+        child.on("close", (exitCode) => {
+            if (exitCode === 0) {
+                console.log("Image copied to clipboard");
+                resolvePromise();
+                return;
+            }
+
+            reject(
+                new Error(
+                    `Clipboard process failed: ${errorOutput.trim()}`
+                )
+            );
+        });
+
+        child.stdin.end(imageBuffer.toString("base64"));
+    });
 }
 
 async function downloadLatestImage() {
@@ -46,11 +68,7 @@ async function downloadLatestImage() {
     const arrayBuffer = await response.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
-    await writeFile(imagePath, imageBuffer);
-
-    console.log("Image saved as test-image.jpg");
-
-    await copyImageToClipboard();
+    await copyImageToClipboard(imageBuffer);
 }
 
 async function checkLatest() {

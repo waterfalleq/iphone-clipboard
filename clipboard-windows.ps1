@@ -1,15 +1,16 @@
-param(
-	[Parameter(Mandatory = $true)]
-	[string]$ImagePath
-)
+$ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$resolvedPath = (Resolve-Path -LiteralPath $ImagePath).Path
-$image = [System.Drawing.Image]::FromFile($resolvedPath)
+$base64 = [Console]::In.ReadToEnd()
+$imageBytes = [Convert]::FromBase64String($base64)
+$memoryStream = [System.IO.MemoryStream]::new($imageBytes)
+$image = $null
 
 try {
+	$image = [System.Drawing.Image]::FromStream($memoryStream)
+
 	$orientationPropertyId = 0x0112
 
 	if ($image.PropertyIdList -contains $orientationPropertyId) {
@@ -37,5 +38,9 @@ try {
 	[System.Windows.Forms.Clipboard]::SetImage($image)
 }
 finally {
-	$image.Dispose()
+	if ($null -ne $image) {
+		$image.Dispose()
+	}
+
+	$memoryStream.Dispose()
 }

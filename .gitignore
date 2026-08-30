@@ -2,4 +2,3 @@ node_modules/
 uploads/
 .wrangler/
 .dev.vars*
-test-image.jpg

@@ -11,6 +11,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 process.loadEnvFile(".dev.vars");
 process.loadEnvFile(".client.env");
@@ -18,9 +19,16 @@ process.loadEnvFile(".client.env");
 const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
 const legacyStateFilePath = resolve(".client-state.json");
-const trayIconDataUrl =
-	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=";
+const trayIconPath = fileURLToPath(
+	new URL("./assets/tray-icon.png", import.meta.url)
+);
+const successTrayIconPath = fileURLToPath(
+	new URL("./assets/tray-icon-success.png", import.meta.url)
+);
 let tray = null;
+let defaultTrayIcon = null;
+let successTrayIcon = null;
+let successIconTimeout = null;
 let lastImageId = null;
 let stateFilePath = null;
 let connectionStatus = "Starting…";
@@ -136,6 +144,22 @@ function markImageCopied() {
 	updateTrayMenu();
 }
 
+function showCopySuccess() {
+	tray.setImage(successTrayIcon);
+
+	if (successIconTimeout) {
+		clearTimeout(successIconTimeout);
+	}
+
+	successIconTimeout = setTimeout(() => {
+		if (!tray.isDestroyed()) {
+			tray.setImage(defaultTrayIcon);
+		}
+
+		successIconTimeout = null;
+	}, 2000);
+}
+
 async function copyLatestImage() {
 	const response = await fetch(`${apiUrl}/image`, {
 		headers: {
@@ -166,6 +190,7 @@ async function copyLatestImage() {
 	});
 
 	await clipboard.write([clipboardItem]);
+	showCopySuccess();
 
 	const imageSize = image.getSize();
 
@@ -243,10 +268,16 @@ function createDesktopApp() {
 			"client-state.json"
 		);
 
-		const trayIcon =
-			nativeImage.createFromDataURL(trayIconDataUrl);
+		defaultTrayIcon =
+			nativeImage.createFromPath(trayIconPath);
+		successTrayIcon =
+			nativeImage.createFromPath(successTrayIconPath);
 
-		tray = new Tray(trayIcon);
+		if (defaultTrayIcon.isEmpty() || successTrayIcon.isEmpty()) {
+			throw new Error("Tray icon could not be loaded");
+		}
+
+		tray = new Tray(defaultTrayIcon);
 		updateTrayMenu();
 
 		console.log("Tray app is running");

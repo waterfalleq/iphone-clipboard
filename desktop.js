@@ -34,6 +34,7 @@ let stateFilePath = null;
 let copyInProgress = false;
 let connectionStatus = "Starting…";
 let lastCopyStatus = "Last copied this session: not yet";
+let lastPollingErrorMessage = null;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -250,12 +251,31 @@ async function copyLatestImage() {
 	);
 }
 
+function reportPollingFailure(error) {
+	if (error.message === lastPollingErrorMessage) {
+		return;
+	}
+
+	lastPollingErrorMessage = error.message;
+	console.error("Polling failed:", error.message);
+}
+
+function reportPollingSuccess() {
+	if (!lastPollingErrorMessage) {
+		return;
+	}
+
+	console.log("Polling recovered");
+	lastPollingErrorMessage = null;
+}
+
 async function checkLatest() {
 	try {
 		const latest = await fetchLatest();
 
 		if (!latest.available || latest.id === lastImageId) {
 			setConnectionStatus("Waiting for image");
+			reportPollingSuccess();
 			return;
 		}
 
@@ -276,9 +296,11 @@ async function checkLatest() {
 				"Automatic copy deferred: another copy is running"
 			);
 		}
+
+		reportPollingSuccess();
 	} catch (error) {
 		setConnectionStatus("Error — see logs");
-		console.error("Polling failed:", error.message);
+		reportPollingFailure(error);
 	}
 }
 

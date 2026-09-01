@@ -31,6 +31,7 @@ let successTrayIcon = null;
 let successIconTimeout = null;
 let lastImageId = null;
 let stateFilePath = null;
+let copyInProgress = false;
 let connectionStatus = "Starting…";
 let lastCopyStatus = "Last copied this session: not yet";
 
@@ -101,12 +102,31 @@ function updateTrayMenu() {
 		{
 			label: "Copy latest now",
 			click: async () => {
-				setConnectionStatus("Copying latest…");
-
 				try {
-					await copyLatestImage();
-					markImageCopied();
-					setConnectionStatus("Waiting for image");
+					const copyStarted = await runCopyOperation(
+						async () => {
+							setConnectionStatus("Copying latest…");
+
+							const latest = await fetchLatest();
+
+							if (!latest.available) {
+								throw new Error("No image is available");
+							}
+
+							await copyLatestImage();
+							markImageCopied();
+
+							lastImageId = latest.id;
+							await saveLastImageId(lastImageId);
+							setConnectionStatus("Waiting for image");
+						}
+					);
+
+					if (!copyStarted) {
+						console.log(
+							"Manual copy skipped: another copy is running"
+						);
+					}
 				} catch (error) {
 					setConnectionStatus("Copy failed");
 					console.error("Copy failed:", error.message);
@@ -160,6 +180,37 @@ function showCopySuccess() {
 	}, 2000);
 }
 
+async function runCopyOperation(copyOperation) {
+	if (copyInProgress) {
+		return false;
+	}
+
+	copyInProgress = true;
+
+	try {
+		await copyOperation();
+		return true;
+	} finally {
+		copyInProgress = false;
+	}
+}
+
+async function fetchLatest() {
+	const response = await fetch(`${apiUrl}/latest`, {
+		headers: {
+			Authorization: `Bearer ${apiToken}`,
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Latest request failed with status ${response.status}`
+		);
+	}
+
+	return response.json();
+}
+
 async function copyLatestImage() {
 	const response = await fetch(`${apiUrl}/image`, {
 		headers: {
@@ -201,34 +252,30 @@ async function copyLatestImage() {
 
 async function checkLatest() {
 	try {
-		const response = await fetch(`${apiUrl}/latest`, {
-			headers: {
-				Authorization: `Bearer ${apiToken}`,
-			},
-		});
-
-		if (!response.ok) {
-			throw new Error(
-				`Latest request failed with status ${response.status}`
-			);
-		}
-
-		const latest = await response.json();
+		const latest = await fetchLatest();
 
 		if (!latest.available || latest.id === lastImageId) {
 			setConnectionStatus("Waiting for image");
 			return;
 		}
 
-		console.log("New image found:", latest.id);
-		setConnectionStatus("Downloading image…");
+		const copyStarted = await runCopyOperation(async () => {
+			console.log("New image found:", latest.id);
+			setConnectionStatus("Downloading image…");
 
-		await copyLatestImage();
-		markImageCopied();
+			await copyLatestImage();
+			markImageCopied();
 
-		lastImageId = latest.id;
-		await saveLastImageId(lastImageId);
-		setConnectionStatus("Waiting for image");
+			lastImageId = latest.id;
+			await saveLastImageId(lastImageId);
+			setConnectionStatus("Waiting for image");
+		});
+
+		if (!copyStarted) {
+			console.log(
+				"Automatic copy deferred: another copy is running"
+			);
+		}
 	} catch (error) {
 		setConnectionStatus("Error — see logs");
 		console.error("Polling failed:", error.message);

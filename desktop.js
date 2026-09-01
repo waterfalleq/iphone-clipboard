@@ -17,22 +17,41 @@ process.loadEnvFile(".client.env");
 
 const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
-const stateFilePath = resolve(".client-state.json");
+const legacyStateFilePath = resolve(".client-state.json");
 const trayIconDataUrl =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=";
 let tray = null;
 let lastImageId = null;
+let stateFilePath = null;
 let connectionStatus = "Starting…";
 let lastCopyStatus = "Last copied this session: not yet";
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
+async function readLastImageId(filePath) {
+	const stateText = await readFile(filePath, "utf8");
+	const state = JSON.parse(stateText);
+
+	return state.lastImageId ?? null;
+}
+
 async function loadLastImageId() {
 	try {
-		const stateText = await readFile(stateFilePath, "utf8");
-		const state = JSON.parse(stateText);
+		return await readLastImageId(stateFilePath);
+	} catch (error) {
+		if (error.code !== "ENOENT") {
+			throw error;
+		}
+	}
 
-		return state.lastImageId ?? null;
+	try {
+		const legacyImageId =
+			await readLastImageId(legacyStateFilePath);
+
+		await saveLastImageId(legacyImageId);
+		console.log("State moved to Electron user data");
+
+		return legacyImageId;
 	} catch (error) {
 		if (error.code === "ENOENT") {
 			return null;
@@ -218,6 +237,11 @@ function createDesktopApp() {
 		if (!apiUrl || !apiToken) {
 			throw new Error("API_URL and API_TOKEN are required");
 		}
+
+		stateFilePath = resolve(
+			app.getPath("userData"),
+			"client-state.json"
+		);
 
 		const trayIcon =
 			nativeImage.createFromDataURL(trayIconDataUrl);

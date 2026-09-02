@@ -20,7 +20,6 @@ const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
 const normalPollingDelayMilliseconds = 2000;
 const maximumPollingDelayMilliseconds = 16000;
-const legacyStateFilePath = resolve(".client-state.json");
 const trayIconPath = fileURLToPath(
 	new URL("./assets/tray-icon.png", import.meta.url)
 );
@@ -40,30 +39,12 @@ let lastPollingErrorMessage = null;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-async function readLastImageId(filePath) {
-	const stateText = await readFile(filePath, "utf8");
-	const state = JSON.parse(stateText);
-
-	return state.lastImageId ?? null;
-}
-
 async function loadLastImageId() {
 	try {
-		return await readLastImageId(stateFilePath);
-	} catch (error) {
-		if (error.code !== "ENOENT") {
-			throw error;
-		}
-	}
+		const stateText = await readFile(stateFilePath, "utf8");
+		const state = JSON.parse(stateText);
 
-	try {
-		const legacyImageId =
-			await readLastImageId(legacyStateFilePath);
-
-		await saveLastImageId(legacyImageId);
-		console.log("State moved to Electron user data");
-
-		return legacyImageId;
+		return state.lastImageId ?? null;
 	} catch (error) {
 		if (error.code === "ENOENT") {
 			return null;

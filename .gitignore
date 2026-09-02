@@ -2,5 +2,3 @@ node_modules/
 .wrangler/
 .dev.vars*
 !.dev.vars.example
-.client-state.json
-.client.env

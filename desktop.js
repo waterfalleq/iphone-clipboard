@@ -4,6 +4,7 @@ import {
 	ClipboardItem,
 	Menu,
 	nativeImage,
+	safeStorage,
 	Tray,
 } from "electron";
 import {
@@ -12,12 +13,8 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfiguration } from "./configuration.js";
 
-process.loadEnvFile(".dev.vars");
-process.loadEnvFile(".client.env");
-
-const apiUrl = process.env.API_URL;
-const apiToken = process.env.API_TOKEN;
 const requestTimeoutMilliseconds = 10000;
 const normalPollingDelayMilliseconds = 2000;
 const maximumPollingDelayMilliseconds = 16000;
@@ -33,6 +30,9 @@ let successTrayIcon = null;
 let successIconTimeout = null;
 let lastImageId = null;
 let stateFilePath = null;
+let configurationFilePath = null;
+let apiUrl = null;
+let apiToken = null;
 let copyInProgress = false;
 let connectionStatus = "Starting…";
 let lastCopyStatus = "Last copied this session: not yet";
@@ -86,6 +86,7 @@ function updateTrayMenu() {
 		},
 		{
 			label: "Copy latest now",
+			enabled: Boolean(apiUrl && apiToken),
 			click: async () => {
 				try {
 					const copyStarted = await runCopyOperation(
@@ -352,15 +353,15 @@ async function startPolling() {
 	}
 }
 
-function createDesktopApp() {
+async function createDesktopApp() {
 	try {
-		if (!apiUrl || !apiToken) {
-			throw new Error("API_URL and API_TOKEN are required");
-		}
-
 		stateFilePath = resolve(
 			app.getPath("userData"),
 			"client-state.json"
+		);
+		configurationFilePath = resolve(
+			app.getPath("userData"),
+			"config.json"
 		);
 
 		defaultTrayIcon =
@@ -376,6 +377,29 @@ function createDesktopApp() {
 		updateTrayMenu();
 
 		console.log("Tray app is running");
+
+		try {
+			const configuration = await loadConfiguration(
+				configurationFilePath,
+				safeStorage
+			);
+
+			if (!configuration) {
+				setConnectionStatus("Configuration required");
+				return;
+			}
+
+			apiUrl = configuration.apiUrl;
+			apiToken = configuration.apiToken;
+		} catch (error) {
+			setConnectionStatus("Configuration error — see logs");
+			console.error(
+				"Configuration load failed:",
+				error.message
+			);
+			return;
+		}
+
 		startPolling();
 	} catch (error) {
 		console.error("Desktop startup failed:", error.message);

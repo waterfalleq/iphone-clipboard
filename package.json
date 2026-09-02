@@ -17,6 +17,16 @@
     "type": "git",
     "url": "https://github.com/waterfalleq/iphone-clipboard.git"
   },
+  "cloudflare": {
+    "bindings": {
+      "API_TOKEN": {
+        "description": "Create a long random token and save it. You will need the same token for the iPhone Shortcut and the desktop app."
+      },
+      "IMAGES": {
+        "description": "Private R2 bucket that stores the latest uploaded image."
+      }
+    }
+  },
   "license": "ISC",
   "type": "module",
   "config": {

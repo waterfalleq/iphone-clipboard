@@ -63,6 +63,7 @@ function openSettingsWindow() {
 
 	settingsWindow = new BrowserWindow({
 		title: "iPhone Clipboard Settings",
+		icon: trayIconPath,
 		width: 460,
 		height: 350,
 		show: false,

@@ -18,6 +18,7 @@ process.loadEnvFile(".client.env");
 
 const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
+const requestTimeoutMilliseconds = 10000;
 const normalPollingDelayMilliseconds = 2000;
 const maximumPollingDelayMilliseconds = 16000;
 const trayIconPath = fileURLToPath(
@@ -179,12 +180,29 @@ async function runCopyOperation(copyOperation) {
 	}
 }
 
+async function fetchFromApi(path) {
+	try {
+		return await fetch(`${apiUrl}${path}`, {
+			headers: {
+				Authorization: `Bearer ${apiToken}`,
+			},
+			signal: AbortSignal.timeout(
+				requestTimeoutMilliseconds
+			),
+		});
+	} catch (error) {
+		if (error.name === "TimeoutError") {
+			throw new Error(
+				`Request timed out after ${requestTimeoutMilliseconds / 1000} seconds`
+			);
+		}
+
+		throw error;
+	}
+}
+
 async function fetchLatest() {
-	const response = await fetch(`${apiUrl}/latest`, {
-		headers: {
-			Authorization: `Bearer ${apiToken}`,
-		},
-	});
+	const response = await fetchFromApi("/latest");
 
 	if (!response.ok) {
 		throw new Error(
@@ -196,11 +214,7 @@ async function fetchLatest() {
 }
 
 async function copyLatestImage() {
-	const response = await fetch(`${apiUrl}/image`, {
-		headers: {
-			Authorization: `Bearer ${apiToken}`,
-		},
-	});
+	const response = await fetchFromApi("/image");
 
 	if (!response.ok) {
 		throw new Error(

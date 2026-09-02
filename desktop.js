@@ -1,7 +1,9 @@
 import {
 	app,
+	BrowserWindow,
 	clipboard,
 	ClipboardItem,
+	ipcMain,
 	Menu,
 	nativeImage,
 	safeStorage,
@@ -13,7 +15,11 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfiguration } from "./configuration.js";
+import {
+	loadConfiguration,
+	saveConfiguration,
+	validateConfiguration,
+} from "./configuration.js";
 
 const requestTimeoutMilliseconds = 10000;
 const normalPollingDelayMilliseconds = 2000;
@@ -24,7 +30,14 @@ const trayIconPath = fileURLToPath(
 const successTrayIconPath = fileURLToPath(
 	new URL("./assets/tray-icon-success.png", import.meta.url)
 );
+const settingsHtmlPath = fileURLToPath(
+	new URL("./settings.html", import.meta.url)
+);
+const settingsPreloadPath = fileURLToPath(
+	new URL("./settings-preload.cjs", import.meta.url)
+);
 let tray = null;
+let settingsWindow = null;
 let defaultTrayIcon = null;
 let successTrayIcon = null;
 let successIconTimeout = null;
@@ -34,11 +47,51 @@ let configurationFilePath = null;
 let apiUrl = null;
 let apiToken = null;
 let copyInProgress = false;
+let pollingStarted = false;
 let connectionStatus = "Starting…";
 let lastCopyStatus = "Last copied this session: not yet";
 let lastPollingErrorMessage = null;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+function openSettingsWindow() {
+	if (settingsWindow) {
+		settingsWindow.show();
+		settingsWindow.focus();
+		return;
+	}
+
+	settingsWindow = new BrowserWindow({
+		title: "iPhone Clipboard Settings",
+		width: 460,
+		height: 350,
+		show: false,
+		resizable: false,
+		maximizable: false,
+		autoHideMenuBar: true,
+		webPreferences: {
+			preload: settingsPreloadPath,
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: true,
+		},
+	});
+	settingsWindow.setMenu(null);
+
+	settingsWindow.once("ready-to-show", () => {
+		settingsWindow.show();
+	});
+	settingsWindow.on("closed", () => {
+		settingsWindow = null;
+	});
+	settingsWindow.webContents.on(
+		"preload-error",
+		(_event, _preloadPath, error) => {
+			console.error("Settings preload failed:", error.message);
+		}
+	);
+	settingsWindow.loadFile(settingsHtmlPath);
+}
 
 async function loadLastImageId() {
 	try {
@@ -83,6 +136,10 @@ function updateTrayMenu() {
 		},
 		{
 			type: "separator",
+		},
+		{
+			label: "Settings",
+			click: openSettingsWindow,
 		},
 		{
 			label: "Copy latest now",
@@ -181,11 +238,14 @@ async function runCopyOperation(copyOperation) {
 	}
 }
 
-async function fetchFromApi(path) {
+async function fetchFromApi(
+	path,
+	configuration = { apiUrl, apiToken }
+) {
 	try {
-		return await fetch(`${apiUrl}${path}`, {
+		return await fetch(`${configuration.apiUrl}${path}`, {
 			headers: {
-				Authorization: `Bearer ${apiToken}`,
+				Authorization: `Bearer ${configuration.apiToken}`,
 			},
 			signal: AbortSignal.timeout(
 				requestTimeoutMilliseconds
@@ -200,6 +260,43 @@ async function fetchFromApi(path) {
 
 		throw error;
 	}
+}
+
+async function testAndSaveConfiguration(configuration) {
+	const validatedConfiguration = validateConfiguration(
+		configuration.apiUrl,
+		configuration.apiToken
+	);
+	const response = await fetchFromApi(
+		"/latest",
+		validatedConfiguration
+	);
+
+	if (!response.ok) {
+		throw new Error(
+			`Connection test failed with status ${response.status}`
+		);
+	}
+
+	const latest = await response.json();
+
+	if (typeof latest.available !== "boolean") {
+		throw new Error("Worker returned an unexpected response");
+	}
+
+	await saveConfiguration(
+		configurationFilePath,
+		safeStorage,
+		validatedConfiguration
+	);
+
+	apiUrl = validatedConfiguration.apiUrl;
+	apiToken = validatedConfiguration.apiToken;
+	lastPollingErrorMessage = null;
+	setConnectionStatus("Waiting for image");
+	ensurePollingStarted();
+
+	return validatedConfiguration;
 }
 
 async function fetchLatest() {
@@ -353,6 +450,15 @@ async function startPolling() {
 	}
 }
 
+function ensurePollingStarted() {
+	if (pollingStarted) {
+		return;
+	}
+
+	pollingStarted = true;
+	startPolling();
+}
+
 async function createDesktopApp() {
 	try {
 		stateFilePath = resolve(
@@ -400,12 +506,54 @@ async function createDesktopApp() {
 			return;
 		}
 
-		startPolling();
+		ensurePollingStarted();
 	} catch (error) {
 		console.error("Desktop startup failed:", error.message);
 		app.quit();
 	}
 }
+
+ipcMain.handle("settings:load", (event) => {
+	if (event.sender !== settingsWindow?.webContents) {
+		throw new Error("Settings request came from an unknown window");
+	}
+
+	return {
+		apiUrl: apiUrl ?? "",
+		apiToken: apiToken ?? "",
+	};
+});
+
+ipcMain.handle(
+	"settings:test-and-save",
+	async (event, configuration) => {
+		if (event.sender !== settingsWindow?.webContents) {
+			throw new Error(
+				"Settings request came from an unknown window"
+			);
+		}
+
+		try {
+			const savedConfiguration =
+				await testAndSaveConfiguration(configuration);
+
+			return {
+				success: true,
+				message: "Connection successful. Settings saved.",
+				apiUrl: savedConfiguration.apiUrl,
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message: error.message,
+			};
+		}
+	}
+);
+
+app.on("window-all-closed", () => {
+	console.log("Settings window closed; tray app remains running");
+});
 
 if (!hasSingleInstanceLock) {
 	app.quit();

@@ -6,7 +6,7 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 
-function validateConfiguration(apiUrl, apiToken) {
+export function validateConfiguration(apiUrl, apiToken) {
 	if (
 		typeof apiUrl !== "string" ||
 		typeof apiToken !== "string" ||

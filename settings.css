@@ -1,0 +1,71 @@
+:root {
+	color-scheme: light dark;
+	font-family: system-ui, sans-serif;
+	background: Canvas;
+	color: CanvasText;
+}
+
+body {
+	margin: 0;
+}
+
+main {
+	padding: 28px;
+}
+
+h1 {
+	margin: 0 0 24px;
+	font-size: 24px;
+}
+
+form {
+	display: grid;
+	gap: 10px;
+}
+
+label {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+input,
+button {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	font: inherit;
+	border-radius: 7px;
+}
+
+input {
+	margin-bottom: 6px;
+	padding: 8px 10px;
+	border: 1px solid GrayText;
+}
+
+button {
+	margin-top: 4px;
+	border: 0;
+	background: Highlight;
+	color: HighlightText;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.65;
+	cursor: wait;
+}
+
+#result {
+	min-height: 20px;
+	margin: 2px 0 0;
+	font-size: 14px;
+}
+
+#result.success {
+	color: #16803c;
+}
+
+#result.error {
+	color: #c73535;
+}

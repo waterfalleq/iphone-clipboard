@@ -18,6 +18,8 @@ process.loadEnvFile(".client.env");
 
 const apiUrl = process.env.API_URL;
 const apiToken = process.env.API_TOKEN;
+const normalPollingDelayMilliseconds = 2000;
+const maximumPollingDelayMilliseconds = 16000;
 const legacyStateFilePath = resolve(".client-state.json");
 const trayIconPath = fileURLToPath(
 	new URL("./assets/tray-icon.png", import.meta.url)
@@ -276,7 +278,7 @@ async function checkLatest() {
 		if (!latest.available || latest.id === lastImageId) {
 			setConnectionStatus("Waiting for image");
 			reportPollingSuccess();
-			return;
+			return true;
 		}
 
 		const copyStarted = await runCopyOperation(async () => {
@@ -298,9 +300,11 @@ async function checkLatest() {
 		}
 
 		reportPollingSuccess();
+		return true;
 	} catch (error) {
 		setConnectionStatus("Error — see logs");
 		reportPollingFailure(error);
+		return false;
 	}
 }
 
@@ -320,9 +324,36 @@ async function startPolling() {
 	console.log("Polling started");
 	setConnectionStatus("Connecting…");
 
+	let pollingDelayMilliseconds =
+		normalPollingDelayMilliseconds;
+	let lastReportedRetryDelayMilliseconds = null;
+
 	while (true) {
-		await checkLatest();
-		await sleep(2000);
+		const pollingSucceeded = await checkLatest();
+
+		if (pollingSucceeded) {
+			pollingDelayMilliseconds =
+				normalPollingDelayMilliseconds;
+			lastReportedRetryDelayMilliseconds = null;
+		} else if (
+			pollingDelayMilliseconds !==
+			lastReportedRetryDelayMilliseconds
+		) {
+			console.log(
+				`Retrying in ${pollingDelayMilliseconds / 1000} seconds`
+			);
+			lastReportedRetryDelayMilliseconds =
+				pollingDelayMilliseconds;
+		}
+
+		await sleep(pollingDelayMilliseconds);
+
+		if (!pollingSucceeded) {
+			pollingDelayMilliseconds = Math.min(
+				pollingDelayMilliseconds * 2,
+				maximumPollingDelayMilliseconds
+			);
+		}
 	}
 }
 
